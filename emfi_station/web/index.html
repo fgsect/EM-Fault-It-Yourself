@@ -1,0 +1,283 @@
+<!-- EMFI Station - Orchestrate electromagnetic fault injection attacks     -->
+<!-- Copyright (C) 2022 Niclas Kühnapfel                                    -->
+<!--                                                                        -->
+<!-- This program is free software: you can redistribute it and/or modify   -->
+<!-- it under the terms of the GNU General Public License as published by   -->
+<!-- the Free Software Foundation, either version 3 of the License, or      -->
+<!-- (at your option) any later version.                                    -->
+<!--                                                                        -->
+<!-- This program is distributed in the hope that it will be useful,        -->
+<!-- but WITHOUT ANY WARRANTY; without even the implied warranty of         -->
+<!-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          -->
+<!-- GNU General Public License for more details.                           -->
+<!--                                                                        -->
+<!-- You should have received a copy of the GNU General Public License      -->
+<!-- along with this program.  If not, see <https://www.gnu.org/licenses/>. -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EMFI Station</title>
+</head>
+<body>
+<header>
+    <div class="navbar navbar-dark bg-dark shadow-sm">
+        <div class="container">
+            <a href="#" class="navbar-brand d-flex align-items-center">
+                <strong>EMFI Station</strong>
+            </a>
+        </div>
+    </div>
+</header>
+
+<div id="app">
+    <div class="modal" tabindex="-1" id="error-modal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Error</h5>>
+                </div>
+                <div class="modal-body">
+                    <p>{{ errorMsg }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-xl">
+        <div class="alert alert-danger mt-3" v-if="state.mode === 'Attack'">
+            Progress of current attack: {{ state.progress }}%
+        </div>
+
+
+        <div class="d-sm-flex justify-content-between mt-3">
+            <div class="p-2">
+                Mode: {{ state.mode }}
+            </div>
+            <div class="p-2">
+                Safe Z Depth: {{ state.safe_z }}
+            </div>
+            <div class="p-2">
+                Position: {{ state.position }}
+            </div>
+            <div class="p-2">
+                Temperature: {{ state.temperature }}
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-end mt-3" >
+            <button class="btn btn-secondary ms-1" @click="switchCam('microscope')" v-if="cam !== 'microscope'">
+                 Switch to Positioning
+            </button>
+            <button class="btn btn-secondary ms-1" @click="switchCam('thermal')" v-if="cam !== 'thermal'">
+                 Switch to Thermal
+            </button>
+            <button class="btn btn-secondary ms-1" @click="switchCam('calibration')" v-if="cam !== 'calibration'">
+                 Switch to Calibration
+            </button>
+        </div>
+
+        <div class="mt-5 d-sm-flex justify-content-center">
+            <div class="col-7">
+                <img :src="'data:image/jpg;base64,' + stream" style="width: 100%;" id="stream" alt="Stream">
+                 <canvas id="overlay"></canvas>
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-center mt-5">
+            <table>
+                <tr>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('z', -1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠕 </strong>
+                        </button>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('y', -1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠕 </strong>
+                        </button>
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('x', -1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠔 </strong>
+                        </button>
+                    </td>
+                    <td></td>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('x', 1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠖 </strong>
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('z', 1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠗 </strong>
+                        </button>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td>
+                        <button class="btn btn-secondary w-100"
+                                @click="move('y', 1, settings.moveSpeed, settings.moveStep)">
+                            <strong> 🠗 </strong>
+                        </button>
+                    </td>
+                    <td></td>
+                </tr>
+            </table>
+        </div>
+        <div class="mt-5 d-sm-flex justify-content-center">
+            <div class="p-3">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.moveSpeed">
+                    <span class="input-group-text">Speed (mm/s)</span>
+                </div>
+            </div>
+            <div class="p-3">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.moveStep">
+                    <span class="input-group-text">Step (mm)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-5"></div>
+        <div class="d-sm-flex justify-content-start mt-5 align-items-center">
+            <div class="p-2 me-2">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" v-model="settings.homeX">
+                    <label class="form-check-label">X</label>
+                </div>
+            </div>
+            <div class="p-2 me-2">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" v-model="settings.homeY">
+                    <label class="form-check-label">Y</label>
+                </div>
+            </div>
+            <div class="p-2">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" v-model="settings.homeZ">
+                    <label class="form-check-label">Z</label>
+                </div>
+            </div>
+            <div class="p-2 d-flex justify-content-end flex-fill">
+                <button class="btn btn-success" @click="home(settings.homeX, settings.homeY, settings.homeZ)">
+                    Home
+                </button>
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-start mt-5">
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.absMoveSpeed">
+                    <span class="input-group-text">Speed (mm/s)</span>
+                </div>
+            </div>
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.absMoveX">
+                    <span class="input-group-text">X (mm)</span>
+                </div>
+            </div>
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.absMoveY">
+                    <span class="input-group-text">Y (mm)</span>
+                </div>
+            </div>
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.absMoveZ">
+                    <span class="input-group-text">Z (mm)</span>
+                </div>
+            </div>
+            <div class="p-2 d-flex justify-content-end flex-fill">
+                <button class="btn btn-success"
+                        @click="absMove(settings.absMoveSpeed, settings.absMoveX, settings.absMoveY, settings.absMoveZ)">
+                    Move
+                </button>
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-start mt-5">
+            <div class="p-2">
+                <div class="input-group">
+                    <select class="form-select" v-model="settings.selectedAttack">
+                        <option v-for="attack in state.attacks">
+                            {{ attack }}
+                        </option>
+                    </select>
+                    <label class="input-group-text">Target</label>
+                </div>
+            </div>
+            <div class="p-2 d-flex justify-content-end flex-fill">
+                <button class="btn btn-success" @click="toggleAttack(settings.selectedAttack)">
+                    {{ state.mode === 'Attack' ? 'Stop Attack' : 'Run Attack' }}
+                </button>
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-start mt-5">
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.joySpeed">
+                    <span class="input-group-text">Speed (mm/s)</span>
+                </div>
+            </div>
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.joyStep">
+                    <span class="input-group-text">Step (mm)</span>
+                </div>
+            </div>
+            <div class="p-2 d-flex justify-content-end flex-fill">
+                <button class="btn btn-success" @click="toggleJoystick(settings.joySpeed, settings.joyStep)">
+                    {{ state.mode === 'Joystick' ? 'Disable Joystick' : 'Enable Joystick' }}
+                </button>
+            </div>
+        </div>
+
+        <div class="d-sm-flex justify-content-start mt-5">
+            <div class="p-2">
+                <div class="input-group">
+                    <input type="text" class="form-control" v-model="settings.safeZ">
+                    <span class="input-group-text">Z (mm)</span>
+                </div>
+            </div>
+            <div class="p-2 d-flex justify-content-end flex-fill">
+                <button class="btn btn-success"
+                        @click="setSafeZ(settings.safeZ)">
+                    Set Safe Z Depth
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="index.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/vue@3"></script>
+<script src="app.js"></script>
+</body>
+</html>
